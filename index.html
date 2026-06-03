@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Breathwork</title>
+  <style>
+    :root {
+      --bg:        #f5f2ed;
+      --surface:   #eae5dd;
+      --green-dk:  #2c4a3e;
+      --green-md:  #3d6b5a;
+      --green-lt:  #7aab93;
+      --text:      #2a2a25;
+      --text-soft: #6b6b62;
+      --ring-idle: #b0c9bc;
+      --ring-in:   #3d6b5a;
+      --ring-hold: #7aab93;
+      --ring-out:  #2c4a3e;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Georgia", "Times New Roman", serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: normal;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+    }
+
+    /* ── Kreis-Animation ── */
+    .breath-wrap {
+      position: relative;
+      width: min(260px, 58vw);
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .breath-ring {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 3px solid var(--ring-idle);
+      transition:
+        transform 0.5s ease,
+        border-color 0.6s ease,
+        box-shadow 0.6s ease;
+      transform: scale(0.62);
+    }
+
+    .breath-ring.phase-inhale {
+      border-color: var(--ring-in);
+      box-shadow: 0 0 32px 6px rgba(61,107,90,0.18);
+    }
+    .breath-ring.phase-hold-in {
+      border-color: var(--ring-hold);
+      box-shadow: 0 0 28px 4px rgba(122,171,147,0.18);
+    }
+    .breath-ring.phase-exhale {
+      border-color: var(--ring-out);
+      box-shadow: 0 0 20px 2px rgba(44,74,62,0.12);
+    }
+    .breath-ring.phase-hold-out {
+      border-color: var(--ring-idle);
+      box-shadow: none;
+    }
+
+    /* Expand / contract werden per JS über inline transition-duration + transform gesetzt */
+
+    /* Phasen-Text ── */
+    .phase-label {
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+      min-height: 2rem;
+      text-align: center;
+      color: var(--green-dk);
+      transition: opacity 0.3s ease;
+    }
+
+    .cycle-info {
+      font-size: 0.82rem;
+      color: var(--text-soft);
+      letter-spacing: 0.06em;
+      min-height: 1.2rem;
+      text-align: center;
+    }
+
+    /* ── Buttons ── */
+    .controls {
+      display: flex;
+      gap: 1rem;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      letter-spacing: 0.1em;
+      padding: 0.65rem 1.8rem;
+      border-radius: 2rem;
+      border: 2px solid var(--green-md);
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    #btn-start {
+      background: var(--green-dk);
+      color: #f5f2ed;
+      border-color: var(--green-dk);
+    }
+    #btn-start:hover  { background: var(--green-md); border-color: var(--green-md); }
+    #btn-stop  { background: transparent; color: var(--green-dk); }
+    #btn-stop:hover   { background: var(--surface); }
+    #btn-stop:disabled { opacity: 0.35; cursor: default; }
+
+    /* ── Audio controls ── */
+    .audio-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      align-items: center;
+      background: var(--surface);
+      border-radius: 1rem;
+      padding: 0.9rem 1.4rem;
+      min-width: 220px;
+    }
+
+    .audio-row {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      width: 100%;
+    }
+
+    .audio-label {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+      letter-spacing: 0.05em;
+      flex: 1;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 90px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--green-lt);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--green-dk);
+    }
+
+    .toggle {
+      position: relative;
+      width: 36px; height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: var(--ring-idle);
+      border-radius: 20px;
+      transition: background 0.25s;
+      cursor: pointer;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.25s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--green-md); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+    .done-msg {
+      font-size: 1rem;
+      color: var(--green-dk);
+      letter-spacing: 0.06em;
+      min-height: 1.4rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Breathwork</h1>
+
+  <div class="breath-wrap">
+    <div class="breath-ring" id="ring"></div>
+  </div>
+
+  <div class="phase-label" id="phase-label">–</div>
+  <div class="cycle-info"  id="cycle-info"></div>
+
+  <div class="controls">
+    <button id="btn-start">Starten</button>
+    <button id="btn-stop"  disabled>Stopp</button>
+  </div>
+
+  <div class="done-msg" id="done-msg"></div>
+
+  <!-- Audio Panel -->
+  <div class="audio-panel">
+    <div class="audio-row">
+      <span class="audio-label">Musik</span>
+      <label class="toggle">
+        <input type="checkbox" id="music-toggle" />
+        <span class="toggle-slider"></span>
+      </label>
+      <input type="range" id="music-vol" min="0" max="1" step="0.05" value="0.35" />
+    </div>
+    <div class="audio-row">
+      <span class="audio-label">Signal-Ton</span>
+      <label class="toggle">
+        <input type="checkbox" id="signal-toggle" checked />
+        <span class="toggle-slider"></span>
+      </label>
+      <input type="range" id="signal-vol" min="0" max="1" step="0.05" value="0.5" />
+    </div>
+  </div>
+
+  <!-- Musik: lege deine MP3 als "music.mp3" neben diese Datei -->
+  <audio id="bg-music" src="music.mp3" loop preload="none"></audio>
+
+<script>
+// ─── Übungsdefinition ────────────────────────────────────────────────
+const EXERCISE = {
+  inhale:  4,   // Sekunden Einatmen
+  holdIn:  4,   // Sekunden Halten nach Einatmen
+  exhale:  6,   // Sekunden Ausatmen
+  holdOut: 2,   // Sekunden Halten nach Ausatmen
+  cycles:  10,  // Zyklen
+};
+
+// Kreis-Größe: 62% = klein (ausgeatmet), 100% = groß (eingeatmet)
+const SCALE_MIN = 0.62;
+const SCALE_MAX = 1.00;
+
+// ─── State ───────────────────────────────────────────────────────────
+let running   = false;
+let timer     = null;   // setTimeout-Handle
+let audioCtx  = null;
+
+// ─── DOM-Referenzen ──────────────────────────────────────────────────
+const ring         = document.getElementById("ring");
+const phaseLabel   = document.getElementById("phase-label");
+const cycleInfo    = document.getElementById("cycle-info");
+const doneMsg      = document.getElementById("done-msg");
+const btnStart     = document.getElementById("btn-start");
+const btnStop      = document.getElementById("btn-stop");
+const bgMusic      = document.getElementById("bg-music");
+const musicToggle  = document.getElementById("music-toggle");
+const musicVol     = document.getElementById("music-vol");
+const signalToggle = document.getElementById("signal-toggle");
+const signalVol    = document.getElementById("signal-vol");
+
+// ─── Web Audio API – Signalton ────────────────────────────────────────
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playTone(freq = 528, duration = 0.18, type = "sine") {
+  if (!signalToggle.checked) return;
+  ensureAudioCtx();
+  const osc  = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type      = type;
+  osc.frequency.value = freq;
+  const vol = parseFloat(signalVol.value);
+  gain.gain.setValueAtTime(vol * 0.35, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+// Unterschiedliche Töne je Phase
+const TONES = {
+  inhale:  () => playTone(528, 0.22, "sine"),
+  holdIn:  () => playTone(440, 0.15, "sine"),
+  exhale:  () => playTone(396, 0.22, "sine"),
+  holdOut: () => playTone(320, 0.15, "sine"),
+};
+
+// ─── Animation: Kreis skalieren ──────────────────────────────────────
+function setScale(scale, durationSec) {
+  ring.style.transitionDuration = `${durationSec}s`;
+  ring.style.transitionTimingFunction = "ease-in-out";
+  ring.style.transform = `scale(${scale})`;
+}
+
+function setPhaseClass(phase) {
+  ring.classList.remove("phase-inhale", "phase-hold-in", "phase-exhale", "phase-hold-out");
+  if (phase) ring.classList.add(`phase-${phase}`);
+}
+
+// ─── Haupt-Loop ───────────────────────────────────────────────────────
+// Wir bauen die komplette Sequenz als Array von Schritten auf und
+// arbeiten sie dann mit setTimeout ab. Das ist einfacher als
+// verschachtelte Timers.
+
+function buildSequence() {
+  const { inhale, holdIn, exhale, holdOut, cycles } = EXERCISE;
+  const steps = [];
+  for (let c = 1; c <= cycles; c++) {
+    steps.push({ phase: "inhale",   dur: inhale,  scale: SCALE_MAX, label: "Einatmen",  cycleText: `Zyklus ${c} / ${cycles}` });
+    if (holdIn  > 0)
+      steps.push({ phase: "hold-in",  dur: holdIn,  scale: SCALE_MAX, label: "Halten",    cycleText: `Zyklus ${c} / ${cycles}` });
+    steps.push({ phase: "exhale",   dur: exhale,  scale: SCALE_MIN, label: "Ausatmen",  cycleText: `Zyklus ${c} / ${cycles}` });
+    if (holdOut > 0)
+      steps.push({ phase: "hold-out", dur: holdOut, scale: SCALE_MIN, label: "Halten",    cycleText: `Zyklus ${c} / ${cycles}` });
+  }
+  return steps;
+}
+
+let steps = [];
+let stepIdx = 0;
+
+function runStep() {
+  if (!running || stepIdx >= steps.length) {
+    finish();
+    return;
+  }
+  const step = steps[stepIdx];
+
+  // Ton
+  const toneKey = step.phase.replace("-in","In").replace("-out","Out")
+                            .replace("hold-In","holdIn").replace("hold-Out","holdOut");
+  // Direkte Map:
+  const toneMap = { inhale: "inhale", "hold-in": "holdIn", exhale: "exhale", "hold-out": "holdOut" };
+  TONES[toneMap[step.phase]]?.();
+
+  // Kreis animieren
+  setPhaseClass(step.phase);
+  setScale(step.scale, step.dur * 0.9); // 90% der Zeit für weiche Transition
+
+  // UI
+  phaseLabel.textContent = step.label;
+  cycleInfo.textContent  = step.cycleText;
+
+  stepIdx++;
+  timer = setTimeout(runStep, step.dur * 1000);
+}
+
+function start() {
+  if (running) return;
+  ensureAudioCtx();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+
+  running  = true;
+  stepIdx  = 0;
+  steps    = buildSequence();
+  doneMsg.textContent = "";
+
+  btnStart.disabled = true;
+  btnStop.disabled  = false;
+
+  // Musik starten wenn Toggle an
+  if (musicToggle.checked) startMusic();
+
+  runStep();
+}
+
+function stop(completed = false) {
+  running = false;
+  clearTimeout(timer);
+
+  // Ring zurücksetzen
+  setPhaseClass(null);
+  setScale(SCALE_MIN, 1.2);
+  phaseLabel.textContent = "–";
+  cycleInfo.textContent  = "";
+
+  btnStart.disabled = false;
+  btnStop.disabled  = true;
+
+  stopMusic();
+
+  if (completed) {
+    doneMsg.textContent = "Übung abgeschlossen. Gut gemacht.";
+    phaseLabel.textContent = "✓";
+  }
+}
+
+function finish() {
+  stop(true);
+}
+
+// ─── Musik ───────────────────────────────────────────────────────────
+function startMusic() {
+  bgMusic.volume = parseFloat(musicVol.value);
+  bgMusic.play().catch(() => {
+    // Kein Fehler anzeigen wenn keine music.mp3 vorhanden
+  });
+}
+
+function stopMusic() {
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
+}
+
+// ─── Event Listener ──────────────────────────────────────────────────
+btnStart.addEventListener("click", start);
+btnStop.addEventListener("click",  () => stop(false));
+
+musicToggle.addEventListener("change", () => {
+  if (running) {
+    musicToggle.checked ? startMusic() : stopMusic();
+  }
+});
+
+musicVol.addEventListener("input", () => {
+  bgMusic.volume = parseFloat(musicVol.value);
+});
+
+// Initialer Kreis-Status
+setScale(SCALE_MIN, 0);
+</script>
+</body>
+</html>
