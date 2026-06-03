@@ -413,7 +413,7 @@
       <input type="range" id="music-vol" min="0" max="1" step="0.05" value="0.35" />
     </div>
     <div class="audio-row">
-      <span class="audio-label">Signal-Ton</span>
+      <span class="audio-label">Stimme</span>
       <label class="toggle">
         <input type="checkbox" id="signal-toggle" checked />
         <span class="toggle-slider"></span>
@@ -444,7 +444,6 @@ let selectedExercise = "resonanz";
 let selectedMinutes  = 5;
 let running = false;
 let timer   = null;
-let audioCtx = null;
 
 // ─── DOM ─────────────────────────────────────────────────────────
 const screenSelect  = document.getElementById("screen-select");
@@ -508,31 +507,51 @@ function showScreen(which) {
   }
 }
 
-// ─── Web Audio API ────────────────────────────────────────────────
-function ensureAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// ─── Web Speech API ───────────────────────────────────────────────
+let voiceReady = false;
+let chosenVoice = null;
+
+function initVoice() {
+  const tryPick = () => {
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return;
+
+    // Priorität: deutsche Frauenstimme
+    const candidates = [
+      voices.find(v => v.lang.startsWith("de") && /anna|hannah|petra|female|woman|frei/i.test(v.name)),
+      voices.find(v => v.lang.startsWith("de") && !v.name.toLowerCase().includes("male")),
+      voices.find(v => v.lang.startsWith("de")),
+      voices.find(v => /anna|samantha|karen|moira|fiona|victoria|susan|zira/i.test(v.name)),
+      voices[0],
+    ];
+    chosenVoice = candidates.find(Boolean) || null;
+    voiceReady = true;
+  };
+
+  if (speechSynthesis.onvoiceschanged !== undefined) {
+    speechSynthesis.onvoiceschanged = tryPick;
+  }
+  tryPick();
 }
-function playTone(freq, duration) {
+initVoice();
+
+function speak(text) {
   if (!signalToggle.checked) return;
-  ensureAudioCtx();
-  const osc  = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.type = "sine";
-  osc.frequency.value = freq;
-  const vol = parseFloat(signalVol.value);
-  gain.gain.setValueAtTime(vol * 0.35, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-  osc.start();
-  osc.stop(audioCtx.currentTime + duration);
+  speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang  = "de-DE";
+  utt.rate  = 0.88;
+  utt.pitch = 1.05;
+  utt.volume = parseFloat(signalVol.value);
+  if (chosenVoice) utt.voice = chosenVoice;
+  speechSynthesis.speak(utt);
 }
 
 const TONES = {
-  inhale:   () => playTone(528, 0.22),
-  "hold-in":() => playTone(440, 0.15),
-  exhale:   () => playTone(396, 0.22),
-  "hold-out":()=> playTone(320, 0.15),
+  inhale:    () => speak("Einatmen"),
+  "hold-in": () => speak("Halten"),
+  exhale:    () => speak("Ausatmen"),
+  "hold-out":() => speak("Halten"),
 };
 
 // ─── Kreis ────────────────────────────────────────────────────────
@@ -562,9 +581,6 @@ function buildSteps(ex, totalCycles) {
 }
 
 function beginBreathing(ex, totalCycles) {
-  ensureAudioCtx();
-  if (audioCtx.state === "suspended") audioCtx.resume();
-
   running = true;
   steps   = buildSteps(ex, totalCycles);
   stepIdx = 0;
